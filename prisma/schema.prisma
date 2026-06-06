@@ -1,0 +1,260 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========== USER & AUTH ==========
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String?
+  password  String?    // For local auth
+  role      UserRole   @default(ADVISOR)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Relations
+  clients   Client[]   @relation("AdvisorClients")
+  sessions  Session[]
+  auditLogs AuditLog[]
+
+  @@index([email])
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  ADVISOR
+  VIEWER
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ========== CLIENT MANAGEMENT ==========
+model Client {
+  id                String   @id @default(cuid())
+  
+  // Basic Info
+  firstName         String
+  lastName          String
+  email             String   @unique
+  phone             String?
+  dateOfBirth       DateTime?
+  
+  // Address
+  addressLine1      String?
+  addressLine2      String?
+  city              String?
+  postCode          String?
+  country           String   @default("UK")
+  
+  // Advisor & Status
+  advisorId         String
+  advisor           User     @relation("AdvisorClients", fields: [advisorId], references: [id])
+  status            ClientStatus @default(ACTIVE)
+  
+  // Financial Profile
+  investmentGoal    String?
+  riskProfile       RiskProfile?
+  totalAssets       Float?
+  annualIncome      Float?
+  
+  // Compliance & Dates
+  fcaRefNo          String?  @unique
+  lastReviewDate    DateTime?
+  nextReviewDate    DateTime?
+  consentGiven      Boolean  @default(false)
+  consentDate       DateTime?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  portfolios        Portfolio[]
+  documents         Document[]
+  communications    Communication[]
+  transactions      Transaction[]
+  auditLogs         AuditLog[] @relation("ClientAuditLogs")
+
+  @@index([advisorId])
+  @@index([status])
+  @@index([email])
+}
+
+enum ClientStatus {
+  PROSPECT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum RiskProfile {
+  CONSERVATIVE
+  MODERATE
+  AGGRESSIVE
+}
+
+// ========== PORTFOLIO & ASSETS ==========
+model Portfolio {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  name          String   // e.g. "ISA Portfolio", "Pension"
+  type          PortfolioType
+  totalValue    Float    @default(0)
+  currency      String   @default("GBP")
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  holdings      Holding[]
+  transactions  Transaction[]
+
+  @@index([clientId])
+}
+
+enum PortfolioType {
+  ISA
+  PENSION
+  GENERAL_INVESTMENT
+  SAVINGS
+  OTHER
+}
+
+model Holding {
+  id            String   @id @default(cuid())
+  portfolioId   String
+  portfolio     Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  
+  isin          String
+  name          String
+  quantity      Float
+  unitPrice     Float
+  value         Float    // quantity * unitPrice
+  allocation    Float    // percentage of portfolio
+  
+  updatedAt     DateTime @updatedAt
+
+  @@index([portfolioId])
+}
+
+model Transaction {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  portfolioId   String
+  portfolio     Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  
+  type          TransactionType // BUY, SELL, DIVIDEND, etc.
+  date          DateTime
+  amount        Float
+  units         Float?
+  unitPrice     Float?
+  notes         String?
+  
+  createdAt     DateTime @default(now())
+
+  @@index([clientId])
+  @@index([portfolioId])
+}
+
+enum TransactionType {
+  BUY
+  SELL
+  DIVIDEND
+  INTEREST
+  FEE
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+// ========== DOCUMENTS & COMMUNICATIONS ==========
+model Document {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  title         String
+  type          DocumentType
+  url           String   // S3 or storage URL
+  size          Int      // bytes
+  mimeType      String
+  uploadedAt    DateTime @default(now())
+  expiresAt     DateTime? // For compliance retention
+  notes         String?
+
+  @@index([clientId])
+  @@index([type])
+}
+
+enum DocumentType {
+  FACT_FIND
+  SUITABILITY_REPORT
+  ANNUAL_STATEMENT
+  CORRESPONDENCE
+  KYC
+  COMPLIANCE
+  OTHER
+}
+
+model Communication {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  type          CommType // EMAIL, PHONE, MEETING, etc.
+  date          DateTime
+  subject       String?
+  notes         String
+  outcome       String?
+  
+  createdAt     DateTime @default(now())
+
+  @@index([clientId])
+  @@index([date])
+}
+
+enum CommType {
+  EMAIL
+  PHONE
+  MEETING
+  VIDEO_CALL
+  LETTER
+}
+
+// ========== AUDIT & COMPLIANCE ==========
+model AuditLog {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  clientId      String?
+  client        Client?  @relation("ClientAuditLogs", fields: [clientId], references: [id], onDelete: SetNull)
+  
+  action        String   // e.g. "CLIENT_CREATED", "PORTFOLIO_UPDATED"
+  changes       String?  // JSON of what changed
+  ipAddress     String?
+  userAgent     String?
+  
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([createdAt])
+}
