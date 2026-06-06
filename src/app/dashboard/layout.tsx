@@ -2,12 +2,16 @@
 
 import Link from 'next/link';
 import { ReactNode } from 'react';
+import { useAuth } from '@/lib/context/auth-context';
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Sidebar */}
-      <aside className="fixed left-0 top-0 w-64 h-screen bg-slate-900 text-white">
+      <aside className="fixed left-0 top-0 w-64 h-screen bg-slate-900 text-white overflow-y-auto">
         <div className="p-6 border-b border-slate-700">
           <h1 className="text-2xl font-bold">BWClient</h1>
         </div>
@@ -34,7 +38,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             href="/dashboard/documents"
             className="block px-4 py-3 rounded-lg hover:bg-slate-800 transition"
           >
-            📋 Documents
+            📄 Documents
           </Link>
           <Link
             href="/dashboard/audit"
@@ -42,21 +46,23 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           >
             🔍 Audit Log
           </Link>
+          {isAdmin && (
+            <>
+              <div className="border-t border-slate-700 my-4"></div>
+              <Link
+                href="/dashboard/database"
+                className="block px-4 py-3 rounded-lg hover:bg-slate-800 transition bg-slate-800"
+              >
+                🗄️ Database Browser
+              </Link>
+            </>
+          )}
         </nav>
       </aside>
 
       {/* Main Content */}
       <div className="ml-64">
-        {/* Top Bar */}
-        <header className="bg-white border-b border-slate-200 p-6 flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-slate-900">Welcome Back</h2>
-          <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">
-            Logout
-          </button>
-        </header>
-
-        {/* Page Content */}
-        <main className="p-8">{children}</main>
+        {children}
       </div>
     </div>
   );
